@@ -2,13 +2,19 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-import json
-from typing import Dict, List
-import re
+import httpx
+from typing import Dict
+import os
 
 app = FastAPI()
 
-app.mount("/assets", StaticFiles(directory="assets"), name="assets")
+# --- Configuration ---
+# Mount the assets directory to serve images like your logo
+if os.path.exists("assets"):
+    app.mount("/assets", StaticFiles(directory="assets"), name="assets")
+
+# URL for your running Rasa server
+RASA_SERVER_URL = "http://localhost:5005/webhooks/rest/webhook"
 
 # Allow cross-origin requests
 app.add_middleware(
@@ -19,54 +25,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Custom chatbot knowledge base - You can train the bot by adding more Q&A pairs
-KNOWLEDGE_BASE = {
-    "greetings": {
-        "patterns": ["hello", "hi", "hey", "good morning", "good evening", "greetings"],
-        "responses": ["Hello! How can I assist you today?", "Hi there! What can I help you with?", "Greetings! How may I help you?"]
-    },
-    "company_info": {
-        "patterns": ["about vasp", "what is vasp", "company info", "who are you", "tell me about vasp"],
-        "responses": ["Vasp is a leading technology company specializing in innovative solutions. We provide cutting-edge services to help businesses grow and succeed."]
-    },
-    "services": {
-        "patterns": ["services", "what do you offer", "products", "solutions", "what can you do"],
-        "responses": ["We offer a wide range of services including:\n• Web Development\n• Mobile App Development\n• Cloud Solutions\n• AI/ML Services\n• Consulting Services\n\nWould you like to know more about any specific service?"]
-    },
-    "contact": {
-        "patterns": ["contact", "phone", "email", "address", "location", "how to reach"],
-        "responses": ["You can contact us through:\n• Email: contact@vasp.com\n• Phone: +1-234-567-8900\n• Address: 123 Tech Street, Innovation City\n• Website: www.vasp.com"]
-    },
-    "pricing": {
-        "patterns": ["price", "cost", "pricing", "how much", "rates", "fees"],
-        "responses": ["Our pricing varies based on your specific needs and project requirements. Please contact our sales team at sales@vasp.com for a customized quote, or schedule a consultation call."]
-    },
-    "support": {
-        "patterns": ["help", "support", "assistance", "problem", "issue", "trouble"],
-        "responses": ["I'm here to help! You can:\n• Ask me questions about our services\n• Contact our support team at support@vasp.com\n• Browse our help documentation\n• Schedule a support call\n\nWhat specific help do you need?"]
-    },
-    "thanks": {
-        "patterns": ["thank", "thanks", "appreciate", "grateful"],
-        "responses": ["You're welcome! Is there anything else I can help you with?", "Happy to help! Feel free to ask if you have more questions."]
-    }
-}
 
-def find_best_response(user_input: str) -> str:
-    """Find the best response based on user input using simple pattern matching"""
-    user_input = user_input.lower()
-    
-    for category, data in KNOWLEDGE_BASE.items():
-        for pattern in data["patterns"]:
-            if pattern in user_input:
-                import random
-                return random.choice(data["responses"])
-    
-    # Default response if no pattern matches
-    return "I understand you're looking for information. Could you please be more specific? You can ask me about our services, contact information, pricing, or any other questions about Vasp."
-
-# Serve chatbot UI at /
+# --- Frontend UI ---
 @app.get("/", response_class=HTMLResponse)
 def home():
+    # The HTML and CSS are identical to your original code to preserve the design.
+    # The JavaScript has been modified for Rasa integration.
     return """
     <!DOCTYPE html>
     <html>
@@ -440,8 +404,7 @@ def home():
         <div class="chat-container">
           <div class="chat-content">
             <div class="chat-messages" id="chat-messages">
-              <!-- Messages will be inserted here -->
-            </div>
+              </div>
             
             <div class="typing-indicator" id="typing-indicator">
               <span class="typing-dots">vaspx is typing</span>
@@ -464,15 +427,16 @@ def home():
         </div>
 
         <script>
-          let currentStep = 'start';
-          let conversationHistory = [];
+          // Unique session ID for the user's conversation with Rasa
+          const sessionId = 'user_' + Date.now();
           
           function getCurrentTime() {
             const now = new Date();
             return now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
           }
           
-          function addBotMessage(content, options = null, showGoBack = false) {
+          // Renders a message from the bot
+          function addBotMessage(content) {
             const messagesContainer = document.getElementById('chat-messages');
             
             const messageWrapper = document.createElement('div');
@@ -507,63 +471,11 @@ def home():
             messageWrapper.appendChild(messageHeader);
             messageWrapper.appendChild(messageContent);
             
-            if (options && options.length > 0) {
-              const optionsContainer = document.createElement('div');
-              optionsContainer.className = 'options-container';
-              
-              options.forEach(option => {
-                const button = document.createElement('button');
-                button.className = 'option-button';
-                
-                const textSpan = document.createElement('span');
-                textSpan.textContent = option.text;
-                
-                const iconSpan = document.createElement('span');
-
-                if (option.url) {
-                  iconSpan.className = 'external-link-icon';
-
-                  const img = document.createElement('img');
-                  img.src = 'assets/external-link.png';
-                  img.alt = '↗';
-                  img.className = 'option-icon-img';
-
-                  iconSpan.appendChild(img);
-
-                  button.onclick = () => window.open(option.url, '_blank');
-                } else {
-                  iconSpan.className = 'option-icon';
-
-                  const img = document.createElement('img');
-                  img.src = 'assets/right-arrow.png';
-                  img.alt = '→';
-                  img.className = 'option-icon-img';
-
-                  iconSpan.appendChild(img);
-
-                  button.onclick = () => handleOptionClick(option.value || option.text);
-                }
-
-                button.appendChild(textSpan);
-                button.appendChild(iconSpan);
-                optionsContainer.appendChild(button);
-              });
-              
-              messageWrapper.appendChild(optionsContainer);
-            }
-            
-            if (showGoBack) {
-              const goBackBtn = document.createElement('button');
-              goBackBtn.className = 'go-back-btn';
-              goBackBtn.textContent = 'Go back';
-              goBackBtn.onclick = () => handleOptionClick('start');
-              messageWrapper.appendChild(goBackBtn);
-            }
-            
             messagesContainer.appendChild(messageWrapper);
             scrollToBottom();
           }
           
+          // Renders a message from the user
           function addUserMessage(content) {
             const messagesContainer = document.getElementById('chat-messages');
             
@@ -616,11 +528,6 @@ def home():
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
           }
           
-          function handleOptionClick(value) {
-            currentStep = value;
-            loadChat(value);
-          }
-          
           function closePrivacyNotice() {
             document.getElementById('privacy-notice').style.display = 'none';
           }
@@ -631,178 +538,112 @@ def home():
             }
           }
           
+          // Called when the user clicks the send button or presses Enter
           function sendMessage() {
             const input = document.getElementById('message-input');
             const message = input.value.trim();
             if (message) {
               addUserMessage(message);
               input.value = '';
-              
-              // Add to conversation history
-              conversationHistory.push({type: 'user', message: message});
-              
-              // Send to chatbot
               sendToChatbot(message);
             }
           }
           
+          // Sends the user's message to the backend and displays the bot's response
           async function sendToChatbot(message) {
             showTypingIndicator();
             
             try {
-              const url = window.location.origin + "/chat?user_input=" + encodeURIComponent(message);
-              const response = await fetch(url);
+              const response = await fetch('/chat', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ message: message, sender: sessionId })
+              });
+
+              if (!response.ok) {
+                  throw new Error(`HTTP Error: ${response.status}`);
+              }
+              
               const data = await response.json();
               
               hideTypingIndicator();
-              addBotMessage(data.message, data.options, data.showGoBack);
-              
-              // Add to conversation history
-              conversationHistory.push({type: 'bot', message: data.message});
+
+              if (data.responses && data.responses.length > 0) {
+                  // Combine all text parts from Rasa into a single string with newlines
+                  const combinedText = data.responses
+                      .map(resp => resp.text)
+                      .filter(text => text) // Removes any empty responses
+                      .join('\\n\\n'); // Joins messages with a paragraph break
+
+                  // Display the single combined message
+                  if (combinedText) {
+                      addBotMessage(combinedText);
+                  }
+              } else {
+                  addBotMessage("I'm sorry, I didn't get a response. Please try again.");
+              }
               
             } catch (error) {
               console.error('Error:', error);
               hideTypingIndicator();
-              addBotMessage("❌ Sorry, there was an error. Please try again.");
+              addBotMessage("❌ Sorry, I'm having trouble connecting. Please ensure the server is running and try again.");
             }
           }
           
-          async function loadChat(userInput = null) {
-            if (userInput && userInput !== 'start') {
-              return sendToChatbot(userInput);
-            }
-            
-            try {
-              const url = window.location.origin + "/chat?user_input=" + encodeURIComponent(userInput || "");
-              const response = await fetch(url);
-              const data = await response.json();
-              
-              addBotMessage(data.message, data.options, data.showGoBack);
-              
-            } catch (error) {
-              console.error('Error:', error);
-              addBotMessage("❌ Sorry, there was an error. Please try again.");
-            }
-          }
-          
-          // Initialize chatbot when page loads
+          // Initialize chatbot with a hardcoded welcome message on page load
           document.addEventListener('DOMContentLoaded', function() {
-            loadChat();
+            const welcomeMessage = "Hi, I am VaspX, an assistant of Vasp Technologies, how can I assist you today?";
+            addBotMessage(welcomeMessage);
           });
         </script>
       </body>
     </html>
     """
 
-# Chatbot API endpoint
-@app.get("/chat")
-def chat(user_input: str = None):
-    """
-    Main chatbot logic with custom training capability
-    """
-    
-    if not user_input or user_input == "start":
-        return {
-            "message": "Welcome to the Vasp assistant. I'm here to connect you to the people and information at Vasp that you need.\n\nTo help you connect with the right team members, please let us know the type of help you need.",
-            "options": [
-                {"text": "Get community support", "value": "community_support"},
-                {"text": "Get technical support", "value": "technical_support"}
-            ],
-            "showGoBack": False
-        }
-    
-    elif user_input == "community_support":
-        return {
-            "message": "Welcome to the Vasp assistant. I'm here to connect you to the people and information at Vasp that you need.\n\nTo help you connect with the right team members, please let us know the type of help you need.",
-            "options": [
-                {"text": "I need support", "value": "need_support"},
-                {"text": "I have a sales question", "value": "sales_question"},
-                {"text": "I'm looking for something else", "url": "https://vasp.com/help"}
-            ],
-            "showGoBack": False
-        }
-    
-    elif user_input == "technical_support":
-        return {
-            "message": "Welcome to the Vasp assistant. I'm here to connect you to the people and information at Vasp that you need.\n\nTo help you connect with the right team members, please let us know the type of help you need.",
-            "options": [
-                {"text": "I need support", "value": "need_support"},
-                {"text": "I have a sales question", "value": "sales_question"},
-                {"text": "I'm looking for something else", "url": "https://vasp.com/help"}
-            ],
-            "showGoBack": False
-        }
-    
-    elif user_input == "need_support":
-        return {
-            "message": "I can help you get connected with our support team. What type of support do you need?",
-            "options": [
-                {"text": "Technical issues", "value": "technical_issues"},
-                {"text": "Account problems", "value": "account_problems"},
-                {"text": "Billing questions", "value": "billing_questions"},
-                {"text": "Other support", "value": "other_support"}
-            ],
-            "showGoBack": True
-        }
-    
-    elif user_input == "sales_question":
-        return {
-            "message": "I can connect you with our sales team to answer your questions about Vasp products and services.",
-            "options": [
-                {"text": "Product information", "value": "product_info"},
-                {"text": "Pricing questions", "value": "pricing"},
-                {"text": "Schedule a demo", "url": "https://calendly.com/vasp-demo"},
-                {"text": "Contact sales", "url": "mailto:sales@vasp.com"}
-            ],
-            "showGoBack": True
-        }
-    
-    # Handle custom queries using the knowledge base
-    else:
-        response = find_best_response(user_input)
-        return {
-            "message": response,
-            "options": [
-                {"text": "Ask another question", "value": "ask_more"},
-                {"text": "Contact support", "url": "mailto:support@vasp.com"},
-                {"text": "Go back to main menu", "value": "start"}
-            ],
-            "showGoBack": False
-        }
 
-# Training endpoint - Add new knowledge to the chatbot
-@app.post("/train")
-def train_chatbot(training_data: dict):
+# --- Backend API ---
+@app.post("/chat")
+async def chat(request: Dict):
     """
-    Train the chatbot with new Q&A pairs
-    Expected format:
-    {
-        "category": "new_category",
-        "patterns": ["pattern1", "pattern2"],
-        "responses": ["response1", "response2"]
-    }
+    This endpoint receives a message from the frontend, forwards it to the
+    Rasa server, and returns Rasa's response.
     """
     try:
-        category = training_data.get("category")
-        patterns = training_data.get("patterns", [])
-        responses = training_data.get("responses", [])
+        user_message = request.get("message", "")
+        sender_id = request.get("sender", "default")
         
-        if category and patterns and responses:
-            KNOWLEDGE_BASE[category] = {
-                "patterns": [p.lower() for p in patterns],
-                "responses": responses
-            }
-            return {"status": "success", "message": f"Added training data for category: {category}"}
-        else:
-            return {"status": "error", "message": "Invalid training data format"}
+        # Payload for the Rasa server
+        rasa_payload = {
+            "sender": sender_id,
+            "message": user_message
+        }
+        
+        # Send the message to the Rasa server and get the response
+        async with httpx.AsyncClient() as client:
+            rasa_response = await client.post(
+                RASA_SERVER_URL,
+                json=rasa_payload,
+                timeout=30.0
+            )
+            rasa_response.raise_for_status() # Raise an exception for bad status codes
+            
+            bot_responses = rasa_response.json()
+            return {"responses": bot_responses}
+            
+    except httpx.RequestError as e:
+        print(f"Error connecting to Rasa: {e}")
+        return {
+            "responses": [{
+                "text": f"Error: Could not connect to the Rasa server at {RASA_SERVER_URL}. Please check if it's running."
+            }]
+        }
     except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-# Get current knowledge base
-@app.get("/knowledge")
-def get_knowledge():
-    """Get the current knowledge base"""
-    return {"knowledge_base": KNOWLEDGE_BASE}
+        print(f"An unexpected error occurred: {e}")
+        return {
+            "responses": [{
+                "text": "An unexpected error occurred on the server. Please check the logs."
+            }]
+        }
 
 # Health check endpoint
 @app.get("/health")
