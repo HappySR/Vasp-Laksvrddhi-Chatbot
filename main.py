@@ -5,8 +5,11 @@ from fastapi.staticfiles import StaticFiles
 import httpx
 from typing import Dict
 import os
+from dotenv import load_dotenv
 
 app = FastAPI()
+
+load_dotenv()
 
 # --- Configuration ---
 # Mount the assets directory to serve images like your logo
@@ -14,7 +17,7 @@ if os.path.exists("assets"):
     app.mount("/assets", StaticFiles(directory="assets"), name="assets")
 
 # URL for your running Rasa server
-RASA_SERVER_URL = "http://localhost:5005/webhooks/rest/webhook"
+RASA_SERVER_URL = f"{os.getenv('RASA_SERVER_URL')}/webhooks/rest/webhook"
 
 # Allow cross-origin requests
 app.add_middleware(
