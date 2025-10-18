@@ -416,7 +416,7 @@ def home():
             <div class="privacy-notice" id="privacy-notice">
               <button class="privacy-close" onclick="closePrivacyNotice()">×</button>
               By proceeding, you agree that Vasp can process
-              <div>personal information about our conversation, including a text/transcript recording to allow us to respond to your inquiry. Please see <a href="#" class="privacy-link">Vasp's Privacy Statement</a> to learn about how Vasp processes personal information.
+              <div>personal information about our conversation, including a text/transcript recording to allow us to respond to your inquiry. Please see <a href="https://www.vasptechnologies.com/privacy-policy" target="_blank" class="privacy-link">Vasp's Privacy Statement</a> to learn about how Vasp processes personal information.
               </div>
             </div>
             
