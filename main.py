@@ -469,11 +469,14 @@ def home():
             
             const messageContent = document.createElement('div');
             messageContent.className = 'message-content';
-            messageContent.textContent = content;
-            
+
+            // Convert **text** to <strong>text</strong>
+            const formattedContent = content.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+            messageContent.innerHTML = formattedContent;
+
             messageWrapper.appendChild(messageHeader);
             messageWrapper.appendChild(messageContent);
-            
+
             messagesContainer.appendChild(messageWrapper);
             scrollToBottom();
           }
